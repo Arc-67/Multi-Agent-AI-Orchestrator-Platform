@@ -1,9 +1,10 @@
 import os
 from dotenv import load_dotenv
+from typing import Any
+from pydantic import BaseModel, Field
+
 from langchain_openai import ChatOpenAI
 from langchain.prompts import SystemMessagePromptTemplate, HumanMessagePromptTemplate, MessagesPlaceholder, ChatPromptTemplate
-
-from pydantic import BaseModel, Field
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.messages import BaseMessage, SystemMessage
 from langchain_core.runnables.history import RunnableWithMessageHistory
@@ -28,10 +29,10 @@ class ConversationSummaryBufferMemory_custom(BaseChatMessageHistory, BaseModel):
     pop oldest messages and create a new summary by adding information from poped messages.
     """
     messages: list[BaseMessage] = Field(default_factory=list)
-    llm: ChatOpenAI = Field(default_factory=ChatOpenAI)
+    llm: Any = None
     k: int = Field(default_factory=int)
 
-    def __init__(self, llm: ChatOpenAI, k: int):
+    def __init__(self, llm: Any, k: int):
         super().__init__(llm=llm, k=k)
         # print(f"Initializing ConversationSummaryBufferMemory_custom with k={k}")
 
@@ -108,6 +109,61 @@ def get_chat_history(session_id: str, llm: ChatOpenAI, k: int = 4) -> Conversati
     # remove anything beyond the last
     return chat_map[session_id]
 
+# ------------------------ Initialize LLM model ----------------------------------------------------
+# For temperature=0 for normal accurate responses
+llm = ChatOpenAI(temperature=0.0, model="gpt-4.1-nano")
+
+# ------------------------ Prompt Template ----------------------------------------------------
+system_prompt = """
+You are a conversational AI assistant that uses the conversation history and tool outputs as your only sources of truth.
+Guidelines:
+1. Answer only using information from the chat history or tool results - never invent or assume facts.
+2. If key information is missing, ask one short clarifying question instead of guessing
+3. If the user changes topic or interrupts, handle it naturally - answer the new query, but retain memory of previous context for when they return
+4. Be concise, factual, and context-aware. Avoid repetition or over-explanation
+5. When resuming after an interruption, reuse remembered context if its relevant
+Your goal is to respond clearly and naturally while maintaining accurate continuity across turns.
+"""
+prompt_template = ChatPromptTemplate.from_messages([
+    ("system", system_prompt),
+    MessagesPlaceholder(variable_name="chat_history"),
+    ("human", "{query}"),
+])
+
+# ------------------------ initialize memory ----------------------------------------------------
+chat_map = {}
+
+# ------------------------ Chatbot Chain ---------------------------------------------------- 
+pipeline = prompt_template | llm
+pipeline_with_history = RunnableWithMessageHistory(
+    pipeline,
+    get_session_history=get_chat_history,
+    input_messages_key = "query",
+    history_messages_key= "chat_history",
+    history_factory_config= [
+        ConfigurableFieldSpec(
+            id="session_id",
+            annotation=str,
+            name="Session ID",
+            description="The session ID to use for the chat history",
+            default="id_default",
+        ),
+        ConfigurableFieldSpec(
+            id="llm",
+            annotation=ChatOpenAI,
+            name="LLM",
+            description="The LLM to use for the conversation summary",
+            default=llm,
+        ),
+        ConfigurableFieldSpec(
+            id="k",
+            annotation=int,
+            name="k",
+            description="The number of messages to keep in the history",
+            default=6,
+        )
+    ]
+)
 
 # Prints Conversation History
 def print_history(session_id: str):
@@ -198,10 +254,10 @@ def interrupted_path(session_id: str = "session_id", k: int = 6):
 
     for i, msg in enumerate([
         "Hi, my name is James Potter",
-        "I'm looking for a starbucks branch.",
-        "The branch I am currently looking at is in Subang Jaya. This branch opens at 8am",
+        "I'm looking for a starbucks outlet.",
         "Also, do you ship internationally?",    # interruption (assistant should answer)
-        "Sorry the branch in Subang Jaya. What's the opening time?"
+        "I'm looking for a outlet in Subang Jaya",
+        "What is my name again?"
     ]):
         print(f"---\nMessage {i+1}\n---\n")
         pipeline_with_history.invoke(
@@ -214,64 +270,6 @@ def interrupted_path(session_id: str = "session_id", k: int = 6):
 
 
 if __name__ == '__main__':
-    # ------------------------ Initialize LLM model ----------------------------------------------------
-    # For temperature=0 for normal accurate responses
-    llm = ChatOpenAI(temperature=0.0, model="gpt-4.1-nano")
-
-    # ------------------------ Prompt Template ----------------------------------------------------
-    system_prompt = """
-    You are a conversational AI assistant that uses the conversation history and tool outputs as your only sources of truth.
-    Guidelines:
-    1. Answer only using information from the chat history or tool results - never invent or assume facts.
-    2. If key information is missing, ask one short clarifying question instead of guessing
-    3. If the user changes topic or interrupts, handle it naturally - answer the new query, but retain memory of previous context for when they return
-    4. Be concise, factual, and context-aware. Avoid repetition or over-explanation
-    5. When resuming after an interruption, reuse remembered context if its relevant
-    Your goal is to respond clearly and naturally while maintaining accurate continuity across turns.
-    """
-
-    prompt_template = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        MessagesPlaceholder(variable_name="chat_history"),
-        ("human", "{query}"),
-    ])
-
-    # ------------------------ initialize memory ----------------------------------------------------
-    chat_map = {}
-
-    # ------------------------ Chatbot Chain ---------------------------------------------------- 
-    pipeline = prompt_template | llm
-
-    pipeline_with_history = RunnableWithMessageHistory(
-        pipeline,
-        get_session_history=get_chat_history,
-        input_messages_key = "query",
-        history_messages_key= "chat_history",
-        history_factory_config= [
-            ConfigurableFieldSpec(
-                id="session_id",
-                annotation=str,
-                name="Session ID",
-                description="The session ID to use for the chat history",
-                default="id_default",
-            ),
-            ConfigurableFieldSpec(
-                id="llm",
-                annotation=ChatOpenAI,
-                name="LLM",
-                description="The LLM to use for the conversation summary",
-                default=llm,
-            ),
-            ConfigurableFieldSpec(
-                id="k",
-                annotation=int,
-                name="k",
-                description="The number of messages to keep in the history",
-                default=6,
-            )
-        ]
-    )
-
     # Output Happy Path test results
     happy_path(session_id = "id_happy", k = 6)
 
