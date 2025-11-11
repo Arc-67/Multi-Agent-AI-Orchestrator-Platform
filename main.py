@@ -1,14 +1,24 @@
+import os
+from dotenv import load_dotenv
+# ------------------------ API Keys -------------------------------------------
+# Load environment variables from .env file
+load_dotenv()
+os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
+# ----------------------------------------------------------------------------
+
 import asyncio
 from typing import Any, Union, Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query, status
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from langchain_core.messages import BaseMessage
 
 from custom_agent import QueueCallbackHandler, agent_executor, get_chat_history, llm_memory
+from product_retrieval import qa_chain
 
+# ------------------------ FastAPI ----------------------------------------------------
 # initilizing our application
 app = FastAPI()
 
@@ -69,8 +79,8 @@ async def token_generator(
     #     print(f"Bot Output: {final_answer_call["args"]["answer"]}")
     #     print(f"Tools Used: {final_answer_call["args"]["tools_used"]}")
 
-# invoke function
-@app.post("/invoke")
+# invoke AT Agent function
+@app.post("/invoke", status_code=status.HTTP_202_ACCEPTED) #
 async def invoke(content: str, session_id: str = "test_1"):
     queue: asyncio.Queue = asyncio.Queue()
     streamer = QueueCallbackHandler(queue)
@@ -88,3 +98,24 @@ async def invoke(content: str, session_id: str = "test_1"):
             "Connection": "keep-alive",
         }
     )
+
+# products endpoint
+@app.get("/products", status_code=status.HTTP_200_OK) #
+async def get_product_summary(query: str = Query(..., min_length=3, description="Query for product summary")):
+    """
+    Retrieves top-k product documents and returns an AI-generated summary.
+    This is a non-streaming, simple JSON endpoint.
+    """
+    try:
+        # We use 'ainvoke' for an asynchronous call
+        result = await qa_chain.ainvoke({"query": query})
+        
+        # Return the summary and the source documents
+        return {
+            "query": query,
+            "summary": result['result'],
+            "source_documents": result['source_documents']
+        }
+    except Exception as e:
+        # Handle any errors that occur during the RAG chain
+        return {"error": f"An error occurred: {str(e)}"}
