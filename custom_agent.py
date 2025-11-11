@@ -1,13 +1,13 @@
 import os
 from datetime import datetime, timezone
-from dotenv import load_dotenv
 
 import asyncio
 from typing import Any, Union, Optional
 from pydantic import BaseModel, Field
+import httpx
 
-from langchain.schema import HumanMessage, AIMessage, SystemMessage
-from langchain.callbacks.base import AsyncCallbackHandler
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from langchain_core.callbacks.base import AsyncCallbackHandler
 
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage, SystemMessage
@@ -16,12 +16,6 @@ from langchain_core.runnables import ConfigurableField
 from langchain_core.tools import tool
 
 from langchain_openai import ChatOpenAI
-
-
-# ------------------------ API Keys ----------------------------------------------------
-# Load environment variables from .env file
-load_dotenv()
-os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
 
 # ------------------------ LLM & Prompt ----------------------------------------------------
 # LLM and Prompt Setup
@@ -40,23 +34,27 @@ llm_agent = ChatOpenAI(
 system_prompt = """
 You are a conversational AI assistant that relies solely on the conversation history and tool outputs as your sources of truth.
 Always use tools to answer the user's current question not previous questions before responding.
-When you have enough information, use the final_answer tool to provide the final response.
-Else reply with I don't have information on the topic.
+
+You have two types of tools:
+1.  Product Catalog: Use the 'query_product_catalog' tool for any questions about drinkware products (mugs, cups, bottles, etc.).
+2.  Calculators: Use tools like 'add', 'subtract', etc., for math questions.
+
+When you have enough information (from tool results), you *must* call the 'final_answer' tool to provide the final response.
 
 Guidelines:
-1. Use only chat history or tool results and never invent or assume facts.
+1. Use only chat history or tool results and never invent or assume facts. 
 2. If information is missing, ask one short clarifying question.
 3. If the user changes topic or interrupts, handle it naturally and retain relevant context.
 4. Be concise, factual, and context-aware.
 5. When resuming after an interruption, reuse past context only if relevant.
 6. When exucting a calculation think step by step and take note of rules of arithmetic order of operations especially Parentheses:
 Arithmetic Order of Operations:
-    a. Parentheses: " ( " , " ) "
-    b. Exponentiation: " ^ " , " ** "
-    c. Multiplication and division: " * " , " / "
-    d. Addition and subtraction: " + " , " - "
+    1. Parentheses: " ( " , " ) "
+    2. Exponentiation: " ^ " , " ** "
+    3. Multiplication and division: " * " , " / "
+    4. Addition and subtraction: " + " , " - "
 
-Your goal is to respond clearly, naturally, and accurately across turns.
+Your goal is to respond clearly by first selecting the correct tool, and finally call the 'final_answer' tool with the complete solution.
 """
 
 prompt = ChatPromptTemplate.from_messages([
@@ -202,10 +200,46 @@ async def divide(x: float, y: float) -> float:
 
 @tool
 async def final_answer(answer: str, tools_used: list[str]) -> dict[str, str | list[str]]:
-    """Use this tool to provide a final answer to the user."""
+    """Use this tool to provide a final answer to the user. Or to ask a clarifying question."""
     return {"answer": answer, "tools_used": tools_used}
 
-tools = [add, subtract, multiply, exponentiate, divide, final_answer]
+@tool
+async def query_product_catalog(query: str) -> str:
+    """
+    Use this tool to find information about drinkware products, such as 
+    mugs, cups, or bottles. You must provide a search query.
+    Returns an AI-generated summary of any matching products found.
+    """
+    # print(f"--- Calling Product Tool with query: {query} ---")
+    try:
+        # Use httpx.AsyncClient for async requests
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                PRODUCT_API_URL,
+                params={"query": query},
+                timeout=10.0  # Add a 10-second timeout
+            )
+        
+        # Raise an exception for bad status codes (like 404 or 500)
+        response.raise_for_status()
+        
+        # Parse the JSON response
+        data = response.json()
+        
+        # Return the summary, or a fallback message
+        return data.get("summary", "No summary was returned from the product catalog.")
+
+    except httpx.RequestError as e:
+        print(f"HTTP Request Error: {e}")
+        return f"Error: Could not connect to the product catalog: {str(e)}"
+    except Exception as e:
+        print(f"Product Tool Error: {e}")
+        return f"An unexpected error occurred while querying products: {str(e)}"
+
+# define tool variables
+PRODUCT_API_URL = "http://localhost:8000/products"
+
+tools = [add, subtract, multiply, exponentiate, divide, query_product_catalog, final_answer]
 # note when we have sync tools we use tool.func, when async we use tool.coroutine
 name2tool = {tool.name: tool.coroutine for tool in tools}
 
