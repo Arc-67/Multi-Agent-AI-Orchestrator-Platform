@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from langchain_core.messages import BaseMessage
 
-from custom_agent import QueueCallbackHandler, agent_executor, get_chat_history, llm_memory
+from custom_agent import QueueCallbackHandler, agent_executor, get_chat_history, llm_memory, clear_all_history
 # --- Imports for the product endpoint ---
 from product_retrieval import qa_chain
 
@@ -24,6 +24,16 @@ from product_retrieval import qa_chain
 from outlet_retrieval_agent import sql_agent_executor # <-- Import the new SQL agent
 from outlet_model import create_db_and_tables, populate_database, is_database_empty # <-- Import DB functions
 
+# --- Define the background clearer chat history memory task ---
+async def background_history_clearer():
+    """
+    This task runs in the background for the entire lifespan of the server.
+    It wakes up every hour and calls the function to clear the in-memory chat map.
+    """
+    while True:
+        await asyncio.sleep(3600)  # Sleep for 1 hour (3600 seconds)
+        clear_all_history()
+    
 # --- Database Initialization ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -44,6 +54,10 @@ async def lifespan(app: FastAPI):
         print("Database is already populated.")
     
     print("FastAPI startup: Database setup complete.")
+
+    # clears chat history periodically
+    asyncio.create_task(background_history_clearer())
+    print("FastAPI startup: Launched background task to clear chat history every 1h.")
     
     # This 'yield' is the point where the app is running
     yield
@@ -57,7 +71,10 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Your frontend URL
+    allow_origins=[
+        "http://localhost:3000",      # Original origin (maybe for a React app)
+        "http://127.0.0.1:5500"       # Your new HTML file's origin
+    ],  # Your frontend URL
     allow_credentials=True,
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
@@ -73,7 +90,7 @@ async def token_generator(
     task = asyncio.create_task(agent_executor.invoke(
         input=content,
         streamer=streamer,
-        verbose=True,  # set to True to see verbose output in console
+        verbose=True,
         chat_memory = chat_memory,
         session_id = session_id
     ))
@@ -114,8 +131,8 @@ async def token_generator(
 
 # invoke AT Agent function
 @app.post("/invoke", status_code=status.HTTP_202_ACCEPTED) #
-async def invoke(content: str,
-                 session_id: str = "test_1",
+async def invoke(content: str = Query(...),
+                 session_id: str = Query("test_1"),
                  test_error: bool = Query(False, description="Set to true to simulate a 500 error")):
     """
     Invoves LLM Agent with tools:
@@ -207,3 +224,7 @@ async def get_outlet_info(
     except Exception as e:
         print(f"Error in /outlets endpoint: {e}")
         return {"error": f"An error occurred: {str(e)}"}
+    
+@app.get("/")
+async def root():
+    return {"message": "AI Agent Server is running."}
