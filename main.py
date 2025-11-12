@@ -8,6 +8,7 @@ os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
 
 import asyncio
 from typing import Any, Union, Optional
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Query, status
 from fastapi.responses import StreamingResponse
@@ -16,7 +17,39 @@ from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import BaseMessage
 
 from custom_agent import QueueCallbackHandler, agent_executor, get_chat_history, llm_memory
+# --- Imports for the product endpoint ---
 from product_retrieval import qa_chain
+
+# --- Imports for the outlets endpoint ---
+from outlet_retrieval_agent import sql_agent_executor # <-- Import the new SQL agent
+from outlet_model import create_db_and_tables, populate_database, is_database_empty # <-- Import DB functions
+
+# --- Database Initialization ---
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    This function runs when the FastAPI app starts.
+    It creates the database and populates it *only if it's empty*.
+    """
+    print("FastAPI startup: Initializing database...")
+    # This is always safe to run, it just checks if tables exist
+    create_db_and_tables() 
+    
+    # --- MODIFIED LOGIC ---
+    if is_database_empty():
+        print("Database is empty. Populating from 'outlets.jsonl'...")
+        populate_database()
+        print("Database population complete.")
+    else:
+        print("Database is already populated.")
+    
+    print("FastAPI startup: Database setup complete.")
+    
+    # This 'yield' is the point where the app is running
+    yield
+    
+    # Code after the yield would run on shutdown
+    print("FastAPI shutdown complete.")
 
 # ------------------------ FastAPI ----------------------------------------------------
 # initilizing our application
@@ -82,6 +115,13 @@ async def token_generator(
 # invoke AT Agent function
 @app.post("/invoke", status_code=status.HTTP_202_ACCEPTED) #
 async def invoke(content: str, session_id: str = "test_1"):
+    """
+    Invoves LLM Agent with tools:
+    1. calculator tools
+    2. /product enpoint as a tool
+    3.
+    """
+
     queue: asyncio.Queue = asyncio.Queue()
     streamer = QueueCallbackHandler(queue)
 
@@ -107,7 +147,7 @@ async def get_product_summary(query: str = Query(..., min_length=3, description=
     This is a non-streaming, simple JSON endpoint.
     """
     try:
-        # We use 'ainvoke' for an asynchronous call
+        # Use 'ainvoke' for an asynchronous call
         result = await qa_chain.ainvoke({"query": query})
         
         # Return the summary and the source documents
@@ -118,4 +158,29 @@ async def get_product_summary(query: str = Query(..., min_length=3, description=
         }
     except Exception as e:
         # Handle any errors that occur during the RAG chain
+        return {"error": f"An error occurred: {str(e)}"}
+    
+
+@app.get("/outlets")
+async def get_outlet_info(query: str = Query(..., min_length=3, description="Natural language query for ZUS outlets")):
+    """
+    Translates a natural language query to SQL, executes it against
+    the ZUS outlet database, and returns the results.
+    """
+    print(f"--- Received /outlets query: {query} ---")
+    try:
+        # Use 'ainvoke' to call the agent asynchronously
+        # The agent will handle figuring out which tool to call.
+        result = await sql_agent_executor.ainvoke({
+            "input": query,
+            "chat_history": [] # Pass an empty history for this single-turn endpoint
+        })
+        
+        # The final answer is in the 'output' key
+        return {
+            "query": query,
+            "result": result['output']
+        }
+    except Exception as e:
+        print(f"Error in /outlets endpoint: {e}")
         return {"error": f"An error occurred: {str(e)}"}

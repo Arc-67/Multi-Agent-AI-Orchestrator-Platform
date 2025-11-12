@@ -36,8 +36,9 @@ You are a conversational AI assistant that relies solely on the conversation his
 Always use tools to answer the user's current question not previous questions before responding.
 
 You have two types of tools:
-1.  Product Catalog: Use the 'query_product_catalog' tool for any questions about drinkware products (mugs, cups, bottles, etc.).
-2.  Calculators: Use tools like 'add', 'subtract', etc., for math questions.
+1. Product Catalog: Use the 'query_product_catalog' tool for any questions about drinkware products (mugs, cups, bottles, etc.).
+2. Outlet Catalog: Use 'query_outlet_catalog' for questions about ZUS Coffee outlet locations, hours, or services.
+3. Calculators: Use tools like 'add', 'subtract', etc., for math questions.
 
 When you have enough information (from tool results), you *must* call the 'final_answer' tool to provide the final response.
 
@@ -236,10 +237,42 @@ async def query_product_catalog(query: str) -> str:
         print(f"Product Tool Error: {e}")
         return f"An unexpected error occurred while querying products: {str(e)}"
 
+# --- NEW OUTLET CATALOG TOOL ---
+@tool
+async def query_outlet_catalog(query: str) -> str:
+    """
+    Use this tool to find information about ZUS Coffee outlet locations, 
+    operating hours, or services. You must provide a search query.
+    Returns an AI-generated answer about matching outlets.
+    """
+    print(f"--- Calling Outlet Tool with query: {query} ---")
+    try:
+        # Use httpx.AsyncClient for async requests
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                OUTLET_API_URL,
+                params={"query": query},
+                timeout=10.0  # Add a 10-second timeout
+            )
+        
+        response.raise_for_status()
+        data = response.json()
+        
+        # Note: The /outlets endpoint returns "result"
+        return data.get("result", "No result was returned from the outlet catalog.")
+
+    except httpx.RequestError as e:
+        print(f"HTTP Request Error: {e}")
+        return f"Error: Could not connect to the outlet catalog: {str(e)}"
+    except Exception as e:
+        print(f"Outlet Tool Error: {e}")
+        return f"An unexpected error occurred while querying outlets: {str(e)}"
+
 # define tool variables
 PRODUCT_API_URL = "http://localhost:8000/products"
+OUTLET_API_URL = "http://localhost:8000/outlets"
 
-tools = [add, subtract, multiply, exponentiate, divide, query_product_catalog, final_answer]
+tools = [add, subtract, multiply, exponentiate, divide, query_product_catalog, query_outlet_catalog, final_answer]
 # note when we have sync tools we use tool.func, when async we use tool.coroutine
 name2tool = {tool.name: tool.coroutine for tool in tools}
 
@@ -302,7 +335,7 @@ async def execute_tool(tool_call: AIMessage) -> ToolMessage:
 # ------------------------ Agent Executor ----------------------------------------------------
 # Agent Executor
 class CustomAgentExecutor:
-    def __init__(self, max_iterations: int = 10):
+    def __init__(self, max_iterations: int = 15):
         self.chat_history: list[BaseMessage] = []
         self.max_iterations = max_iterations
         self.agent = (
