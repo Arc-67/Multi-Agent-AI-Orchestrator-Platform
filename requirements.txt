@@ -1,2 +1,28 @@
+# Core framework + ASGI server
+fastapi==0.115.9
+uvicorn>= 0.34.0
+
+# Env & HTTP
+python-dotenv>=1.0.1
+httpx>=0.28.1
+
+# LangChain ecosystem (core + main package + OpenAI + Pinecone integration)
 langchain==0.3.27
 langchain-openai==0.3.35
+langchain-core==0.3.79
+langchain-pinecone==0.2.13
+
+# Vector DB client used by langchain-pinecone
+pinecone==7.3.0
+
+# OpenAI client (used by OpenAIEmbeddings / other integrations)
+openai==2.7.2
+
+# SQL / ORM
+SQLAlchemy==2.0.38
+
+# Data validation / models
+pydantic>=2.12.4
+
+# Data Crawl
+beautifulsoup4
