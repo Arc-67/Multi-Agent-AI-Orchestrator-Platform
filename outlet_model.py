@@ -3,10 +3,26 @@ from sqlalchemy import create_engine, Column, Integer, String, func, select
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from sqlalchemy.types import JSON
 import os # Import os to check if file exists
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # 1. --- Database Setup ---
-DATABASE_URL = "sqlite:///./zus_outlets.db"
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+#    It now reads the DATABASE_URL from Render's environment.
+#    If it can't find it, it "falls back" to your local SQLite file.
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./zus_outlets.db")
+
+#    It checks if we are on Render (postgres) or local (sqlite)
+#    and creates the database "engine" with the correct settings.
+if DATABASE_URL.startswith("postgres"):
+    # Production settings for Render's PostgreSQL
+    engine = create_engine(DATABASE_URL)
+else:
+    # Local settings for your SQLite file
+    engine = create_engine(
+        DATABASE_URL, connect_args={"check_same_thread": False}
+    )
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 class Base(DeclarativeBase):
