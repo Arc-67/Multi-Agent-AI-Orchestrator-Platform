@@ -300,9 +300,13 @@ async def query_outlet_catalog(query: str) -> str:
         print(f"Outlet Tool Error: {e}")
         return f"An unexpected error occurred while querying outlets: {str(e)}"
 
-# define tool variables
-PRODUCT_API_URL = "http://localhost:8000/products"
-OUTLET_API_URL = "http://localhost:8000/outlets"
+# Get the base URL from an env var, defaulting to the local server for development
+API_BASE_URL = os.environ.get("API_BASE_URL", "http://127.0.0.1:8000")
+
+PRODUCT_API_URL = f"{API_BASE_URL}/products"
+OUTLET_API_URL = f"{API_BASE_URL}/outlets"
+
+print(f"--- Tools will call endpoints at: {API_BASE_URL} ---")
 
 tools = [add, subtract, multiply, exponentiate, divide, query_product_catalog, query_outlet_catalog, final_answer]
 # note when we have sync tools we use tool.func, when async we use tool.coroutine
