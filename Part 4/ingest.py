@@ -12,7 +12,7 @@ from langchain_pinecone import PineconeVectorStore
 load_dotenv()
 OPENAI_KEY = os.environ.get("OPENAI_API_KEY")
 PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY")
-INDEX_NAME = "mind-hive-test"
+INDEX_NAME = os.environ.get("PINECONE_INDEX_NAME", "mind-hive-test") #
 
 if not OPENAI_KEY or not PINECONE_API_KEY:
     raise RuntimeError("OPENAI_API_KEY and PINECONE_API_KEY must be set in environment.")
