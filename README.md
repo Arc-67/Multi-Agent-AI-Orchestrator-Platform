@@ -55,11 +55,11 @@ The main ``/invoke`` agent does not call the product and outlet agents as intern
 
     - **Con (Network Overhead):** This is slower than an in-process call. The agent has to make a full ``httpx`` network request even if it's just to itself on ``localhost`` or the Render URL. This adds latency compared to a direct Python function call.
 
-### 3. Single LLM Model (``gpt-4.1-nano``)
-This implementation uses the same lightweight model (``gpt-4.1-nano``) for all three agents.
+### 3. LLM Model Choice 
+This implementation uses the lightweight model (``gpt-4.1-mini``) for the main "orchestrator" agent, the other 2 agents uses the model (``gpt-4.1-nano``).
 
 - **Trade-offs:**
-    - **Pro (Speed/Cost):** The application is extremely fast and cost-effective. It's perfectly sufficient for simple tasks and for demonstrating the core architecture.
+    - **Pro (Speed/Cost):** Due to the lightweight models the application is extremely fast and cost-effective. It's perfectly sufficient for simple tasks and for demonstrating the core architecture.
 
     - **Con (Reasoning Power):** The system is brittle. The "specialist" agents (``invoke``,``/products`` and ``/outlets``) are underpowered for complex reasoning. For example, the agent can handle relatively simple query like calculate "5*(3+6)", but if asked to perform a more complex query like "2*(5*(3+6)/3)^3" the agent will likely fail. Where a more powerful model may be able to solve.
 
