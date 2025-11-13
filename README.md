@@ -10,9 +10,7 @@ The application is built on an "agent-of-agents" architecture. A primary "orches
 
 The frontend chat interface visualizes this entire process, showing the agent's "thoughts" and tool calls in real-time as they happen. 
 
-**Note:** that due to deploying on a free tier, the application goes to sleep after 15 minutes of inactivity. So it may take a few minutes to starup again.
-
-Deployed Demo: [Demo Link](https://chatbot-agent-cb3y.onrender.com) 
+**Note:** that due to deploying on a free tier, the application goes to sleep after 15 minutes of inactivity. So it may take a few minutes to starup again. Deployed Demo: [Demo Link](https://chatbot-agent-cb3y.onrender.com) 
 
 # Features
 
