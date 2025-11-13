@@ -12,7 +12,7 @@ The frontend chat interface visualizes this entire process, showing the agent's 
 
 **Note:** that due to deploying on a free tier, the application goes to sleep after 15 minutes of inactivity. So it may take a few minutes to starup again.
 
-This is the link to the deployed demo: [Demo Link](https://chatbot-agent-cb3y.onrender.com) 
+Deployed Demo: [Demo Link](https://chatbot-agent-cb3y.onrender.com) 
 
 # Features
 
