@@ -2,13 +2,11 @@
 
 This is a full-stack AI chat application featuring a multi-agent backend built with Python (FastAPI) and a real-time streaming frontend built with plain HTML, CSS, and JavaScript.
 
-The application is built on an "agent-of-agents" architecture. A primary "orchestrator" agent (/invoke) fields user requests and intelligently delegates tasks to specialized sub-agents and tools, which are exposed as internal API endpoints:
+The application is built on an "agent-of-agents" architecture. A primary "orchestrator" agent (``/invoke``) fields user requests and intelligently delegates tasks to specialized sub-agents and tools, which are exposed as internal API endpoints:
 
-1. **Orchestrator Agent (``/invoke``):** A General LLM Agent that processes user queries and  and intelligently delegates tasks to sub-agents and tools.
+1. **Product Agent (``/products``):** A Retrieval-Augmented Generation (RAG) agent that connects to a Pinecone vector database to find and summarize ZUS Coffee drinkware products.
 
-2. **Product Agent (``/products``):** A Retrieval-Augmented Generation (RAG) agent that connects to a Pinecone vector database to find and summarize ZUS Coffee drinkware products.
-
-3. **Outlet Agent (``/outlets``):** A secure Text-to-SQL agent that connects to a local SQLite database to answer questions about ZUS Coffee outlet locations.
+2. **Outlet Agent (``/outlets``):** A secure Text-to-SQL agent that connects to a local SQLite database to answer questions about ZUS Coffee outlet locations.
 
 The frontend chat interface visualizes this entire process, showing the agent's "thoughts" and tool calls in real-time as they happen.
 
@@ -27,6 +25,43 @@ The frontend chat interface visualizes this entire process, showing the agent's 
 - **Self-Healing Database:** The server automatically creates and populates its SQLite database from a JSONL file on its first run.
 
 - **Downtime Testing:** Endpoints include a ``test_error=true`` flag to safely test and verify the agent's "unhappy path" and error handling.
+
+# Architecture & Design Trade-offs
+This project uses a specific set of architectural patterns, each with its own trade-offs. For the primary "orchestrator" agent (``/invoke``) more detail information on how the agent functions can be found in the document ``Documentation/Part 2 Agent Documentation.pdf``.
+
+### 1. Chat History Memory (``custom_agent.py``)
+The chat history for the main ``/invoke`` agent is handled by a custom class, ``ConversationSummaryBufferMemory_custom``.
+
+- **How it Works:** This class holds the last ``k`` (e.g., 6) messages in memory for each ``session_id`` (user id). When a new message arrives and the limit is exceeded, the oldest messages (the ones being dropped typically 2 messages) are sent to an LLM to be summarized. This new summary is then prepended to the message list as a ``SystemMessage``.
+
+- **Storage:** All active conversations are stored in a single, global dictionary (``chat_map``) in the server's memory. A background task (``background_history_clearer``) runs every hour to wipe this dictionary, preventing a long-term memory leak.
+
+- **Trade-offs:**
+    - **Pro:** This keeps the context window sent to the agent (e.g., ``gpt-4.1-nano``) small and fast. The agent only has to process the summary + the last ``k`` messages, not the entire conversation, saving on tokens and cost.
+
+    - **Pro:** The summarization step allows the agent to "remember" details from much earlier in the conversation, which is superior to a simple "cut-off" buffer.
+
+    - **Con (Cost/Latency):** It requires an additional LLM call every ``k`` messages to create the summary, which adds a small amount of latency to that specific turn. However, in this context the input into the LLM (messages + previous summary) to be summarized is relatively small.
+
+    - **Con (Context Loss):** The quality of the "memory" is dependent on the summarizer model (gpt-4.1-nano). If the summarizer deems a detail "unimportant," it will be lost from the agent's memory forever.
+
+    - **Con (Scalability):** This in-memory storage is not durable. If the server restarts, all conversations are lost. It also does not scale horizontally (i.e., in a multi-server environment), as a user's session is tied to the memory of a single server.
+
+### 2. "Agent-of-Agents" via HTTP
+The main ``/invoke`` agent does not call the product and outlet agents as internal Python functions. It calls them via their own HTTP endpoints (``/products``, ``/outlets``).
+
+- **Trade-offs:**
+    - **Pro (Modularity):** This is a clean "microservice" architecture. You can update, deploy, or even switch the model of the ``/products`` agent without ever touching the main ``/invoke`` agent.
+
+    - **Con (Network Overhead):** This is slower than an in-process call. The agent has to make a full ``httpx`` network request even if it's just to itself on ``localhost`` or the Render URL. This adds latency compared to a direct Python function call.
+
+### 3. Single LLM Model (``gpt-4.1-nano``)
+This implementation uses the same lightweight model (``gpt-4.1-nano``) for all three agents.
+
+- **Trade-offs:**
+    - **Pro (Speed/Cost):** The application is extremely fast and cost-effective. It's perfectly sufficient for simple tasks and for demonstrating the core architecture.
+
+    - **Con (Reasoning Power):** The system is brittle. The "specialist" agents (``invoke``,``/products`` and ``/outlets``) are underpowered for complex reasoning. For example, the agent can handle relatively simple query like calculate "5*(3+6)", but if asked to perform a more complex query like "2*(5*(3+6)/3)^3" the agent will likely fail. Where a more powerful model may be able to solve.
 
 # Tech Stack
 
