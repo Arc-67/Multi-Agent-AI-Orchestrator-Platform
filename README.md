@@ -8,7 +8,9 @@ The application is built on an "agent-of-agents" architecture. A primary "orches
 
 2. **Outlet Agent (``/outlets``):** A secure Text-to-SQL agent that connects to a local SQLite database to answer questions about ZUS Coffee outlet locations.
 
-The frontend chat interface visualizes this entire process, showing the agent's "thoughts" and tool calls in real-time as they happen. This is the link to the deployed demo: [Demo Link](https://chatbot-agent-cb3y.onrender.com)
+The frontend chat interface visualizes this entire process, showing the agent's "thoughts" and tool calls in real-time as they happen. 
+
+**Note:** that due to deploying on a free tier, the application goes to sleep after 15 minutes of inactivity. So it may take a few minutes to starup again. Deployed Demo: [Demo Link](https://chatbot-agent-cb3y.onrender.com) 
 
 # Features
 
@@ -55,11 +57,11 @@ The main ``/invoke`` agent does not call the product and outlet agents as intern
 
     - **Con (Network Overhead):** This is slower than an in-process call. The agent has to make a full ``httpx`` network request even if it's just to itself on ``localhost`` or the Render URL. This adds latency compared to a direct Python function call.
 
-### 3. Single LLM Model (``gpt-4.1-nano``)
-This implementation uses the same lightweight model (``gpt-4.1-nano``) for all three agents.
+### 3. LLM Model Choice 
+This implementation uses the lightweight model (``gpt-4.1-mini``) for the main "orchestrator" agent, the other 2 agents uses the model (``gpt-4.1-nano``).
 
 - **Trade-offs:**
-    - **Pro (Speed/Cost):** The application is extremely fast and cost-effective. It's perfectly sufficient for simple tasks and for demonstrating the core architecture.
+    - **Pro (Speed/Cost):** Due to the lightweight models the application is extremely fast and cost-effective. It's perfectly sufficient for simple tasks and for demonstrating the core architecture.
 
     - **Con (Reasoning Power):** The system is brittle. The "specialist" agents (``invoke``,``/products`` and ``/outlets``) are underpowered for complex reasoning. For example, the agent can handle relatively simple query like calculate "5*(3+6)", but if asked to perform a more complex query like "2*(5*(3+6)/3)^3" the agent will likely fail. Where a more powerful model may be able to solve.
 
